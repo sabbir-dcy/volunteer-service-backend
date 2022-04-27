@@ -2,7 +2,7 @@ import mongodb, { ObjectId } from 'mongodb'
 import cors from 'cors'
 import express from 'express'
 import dotenv from 'dotenv'
-import jsonwebtoken from 'jsonwebtoken'
+import jwt from 'jsonwebtoken'
 
 dotenv.config()
 
@@ -22,11 +22,20 @@ app.listen(port, () => {
 })
 
 function verifyJWT(req, res, next) {
-  const authHeader = req.headers.autorization
+  const authHeader = req.headers.authorization
+
   if (!authHeader) {
     return res.status(401).send({ message: 'unauthorized access' })
   }
-  next()
+  const token = authHeader.split(' ')[1]
+  jwt.verify(token, process.env.ACCESS_TOKEN, (err, decoded) => {
+    if (err) {
+      return res.status(403).send({ message: 'forbidden' })
+    }
+    console.log('decoded', decoded)
+    req.decoded = decoded
+    next()
+  })
 }
 
 const { MongoClient, ServerApiVersion } = mongodb
@@ -51,12 +60,10 @@ async function run() {
 
     app.post('/login', async (req, res) => {
       const user = req.body
-      console.log(user)
-      const jwt = jsonwebtoken
       const token = jwt.sign(user, process.env.ACCESS_TOKEN, {
         expiresIn: '1d',
       })
-
+      console.log('my token', { token })
       res.send({ token })
     })
     /**
@@ -88,11 +95,16 @@ async function run() {
      * individual user activities
      */
     app.get('/api/my_activities', verifyJWT, async (req, res) => {
+      const decodedEmail = req.decoded.email
       const queryEmail = req.query.email
-      const query = { email: queryEmail }
-      const cursor = activityCollection.find(query)
-      const activities = await cursor.toArray()
-      res.send(activities)
+      if (queryEmail === decodedEmail) {
+        const query = { email: queryEmail }
+        const cursor = activityCollection.find(query)
+        const activities = await cursor.toArray()
+        res.send(activities)
+      } else {
+        res.status(403).send({ message: 'forbidden access' })
+      }
     })
 
     /**
