@@ -1,7 +1,8 @@
-import mongodb from 'mongodb'
+import mongodb, { ObjectId } from 'mongodb'
 import cors from 'cors'
 import express from 'express'
 import dotenv from 'dotenv'
+import jsonwebtoken from 'jsonwebtoken'
 
 dotenv.config()
 
@@ -20,6 +21,14 @@ app.listen(port, () => {
   console.log('listening to port', port)
 })
 
+function verifyJWT(req, res, next) {
+  const authHeader = req.headers.autorization
+  if (!authHeader) {
+    return res.status(401).send({ message: 'unauthorized access' })
+  }
+  next()
+}
+
 const { MongoClient, ServerApiVersion } = mongodb
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.8oshb.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`
 const client = new MongoClient(uri, {
@@ -35,6 +44,21 @@ async function run() {
       .db('volunteerService')
       .collection('activities')
 
+    /**
+     * authentication
+     * json webtoken
+     */
+
+    app.post('/login', async (req, res) => {
+      const user = req.body
+      console.log(user)
+      const jwt = jsonwebtoken
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN, {
+        expiresIn: '1d',
+      })
+
+      res.send({ token })
+    })
     /**
      * http://localhost:5000/api/activity
      *
@@ -56,6 +80,32 @@ async function run() {
       const cursor = activityCollection.find(query)
       const activities = await cursor.toArray()
       res.send(activities)
+    })
+
+    /**
+     * http://localhost:5000/api/my_activities?email=${email}
+     *
+     * individual user activities
+     */
+    app.get('/api/my_activities', verifyJWT, async (req, res) => {
+      const queryEmail = req.query.email
+      const query = { email: queryEmail }
+      const cursor = activityCollection.find(query)
+      const activities = await cursor.toArray()
+      res.send(activities)
+    })
+
+    /**
+     * http://localhost:5000/api/my_activities?id=${_id}
+     *
+     * delete activity
+     */
+
+    app.delete('/api/my_activities', async (req, res) => {
+      const queryId = req.query.id
+      const query = { _id: ObjectId(queryId) }
+      const result = await activityCollection.deleteOne(query)
+      res.send(result)
     })
   } finally {
   }
